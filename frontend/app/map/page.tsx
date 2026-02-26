@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import MapView from "@/components/MapView";
 import { searchEntities } from "@/lib/api";
 import type { Entity } from "@/types/argus";
@@ -9,29 +9,26 @@ export default function MapPage() {
   const [entities, setEntities] = useState<Entity[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const fetched = useRef(false);
 
   useEffect(() => {
-    async function fetchEntities() {
-      try {
-        setLoading(true);
-        const response = await searchEntities({ query: "*", limit: 1000 });
-        const withLocation = response.entities.filter(
-          (e) => {
-            const props = e.properties as Record<string, unknown>;
-            return props?.latitude != null && props?.longitude != null;
-          }
-        );
+    if (fetched.current) return;
+    fetched.current = true;
+
+    searchEntities({ query: "*", limit: 1000 })
+      .then((response) => {
+        const withLocation = response.entities.filter((e) => {
+          const props = e.properties as Record<string, unknown>;
+          return props?.latitude != null && props?.longitude != null;
+        });
         setEntities(withLocation);
-      } catch (err) {
+      })
+      .catch((err) => {
         setError(
           err instanceof Error ? err.message : "Failed to fetch entities"
         );
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    fetchEntities();
+      })
+      .finally(() => setLoading(false));
   }, []);
 
   return (
@@ -46,29 +43,17 @@ export default function MapPage() {
               ? "Loading..."
               : `${entities.length} entities on map`}
           </span>
-          <a
-            href="/map"
-            className="text-sm font-medium text-zinc-100 underline underline-offset-4"
-          >
-            Map
-          </a>
         </div>
       </nav>
 
-      <main className="relative flex-1">
+      <main className="relative flex-1 overflow-hidden">
         {error && (
-          <div className="absolute inset-x-0 top-4 z-20 mx-auto max-w-md rounded-md border border-red-800 bg-red-950/90 px-4 py-3 text-center text-sm text-red-300">
-            {error}
+          <div className="pointer-events-none absolute inset-x-0 top-4 z-20 mx-auto max-w-md rounded-md border border-zinc-700 bg-zinc-900/90 px-4 py-3 text-center text-sm text-zinc-400">
+            No entity data available — database offline
           </div>
         )}
 
-        {loading ? (
-          <div className="flex h-full items-center justify-center">
-            <div className="text-zinc-500 text-sm">Loading map data...</div>
-          </div>
-        ) : (
-          <MapView entities={entities} />
-        )}
+        <MapView entities={entities} />
       </main>
     </div>
   );

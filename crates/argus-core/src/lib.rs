@@ -7,7 +7,7 @@ pub mod extraction;
 pub mod graph;
 pub mod reasoning;
 
-pub use agent::{Agent, AgentStatus, RawDocument};
+pub use agent::{Agent, AgentLookup, AgentStatus, RawDocument};
 pub use config::{AppConfig, SourceConfig};
 pub use entity::{Entity, EntityType, ExtractionResult, RelationType, Relationship};
 pub use error::{ArgusError, Result};

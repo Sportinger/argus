@@ -5,7 +5,8 @@ use serde::Deserialize;
 use tokio::sync::RwLock;
 use tracing::{debug, error, info, warn};
 
-use argus_core::agent::{Agent, AgentStatus, RawDocument};
+use argus_core::agent::{Agent, AgentLookup, AgentStatus, RawDocument};
+use argus_core::entity::EntityType;
 use argus_core::error::{ArgusError, Result};
 
 const AISHUB_API_URL: &str = "https://data.aishub.net/ws.php";
@@ -307,6 +308,27 @@ impl Agent for AisAgent {
             documents_collected: state.documents_collected,
             error: state.last_error.clone(),
         }
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+}
+
+#[async_trait]
+impl AgentLookup for AisAgent {
+    fn can_lookup(&self, entity_type: &EntityType) -> bool {
+        matches!(entity_type, EntityType::Vessel)
+    }
+
+    async fn lookup(&self, _name: &str, _entity_type: &EntityType) -> Result<Vec<RawDocument>> {
+        // AIS lookup requires API key and doesn't support name-based search
+        // AISHub API only returns bulk data, not individual vessel queries
+        if self.api_key.is_none() {
+            return Ok(Vec::new());
+        }
+        // Would need MMSI for targeted lookup; name search not directly supported
+        Ok(Vec::new())
     }
 }
 

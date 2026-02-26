@@ -4,7 +4,8 @@ use serde::Deserialize;
 use tokio::sync::RwLock;
 use tracing::{debug, info, warn};
 
-use argus_core::agent::{Agent, AgentStatus, RawDocument};
+use argus_core::agent::{Agent, AgentLookup, AgentStatus, RawDocument};
+use argus_core::entity::EntityType;
 use argus_core::error::{ArgusError, Result};
 
 const OPENSKY_API_URL: &str = "https://opensky-network.org/api/states/all";
@@ -228,5 +229,54 @@ impl Agent for AdsbAgent {
             documents_collected: state.documents_collected,
             error: state.last_error.clone(),
         }
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+}
+
+#[async_trait]
+impl AgentLookup for AdsbAgent {
+    fn can_lookup(&self, entity_type: &EntityType) -> bool {
+        matches!(entity_type, EntityType::Aircraft)
+    }
+
+    async fn lookup(&self, name: &str, _entity_type: &EntityType) -> Result<Vec<RawDocument>> {
+        // OpenSky supports filtering by icao24 or callsign
+        // For lookup, we try to match by callsign
+        let url = format!(
+            "https://opensky-network.org/api/states/all?callsign={}",
+            name.trim()
+        );
+
+        debug!(name = %name, "ADS-B aircraft lookup");
+
+        let response = self.client.get(&url).send().await.map_err(|e| {
+            ArgusError::Agent {
+                agent: "adsb".into(),
+                message: format!("Lookup HTTP request failed: {}", e),
+            }
+        })?;
+
+        if !response.status().is_success() {
+            return Ok(Vec::new());
+        }
+
+        let opensky: OpenSkyResponse = response.json().await.map_err(|e| {
+            ArgusError::Agent {
+                agent: "adsb".into(),
+                message: format!("Lookup parse failed: {}", e),
+            }
+        })?;
+
+        let states = opensky.states.unwrap_or_default();
+        let docs: Vec<RawDocument> = states
+            .iter()
+            .filter_map(|sv| Self::parse_state_vector(sv))
+            .collect();
+
+        info!(name = %name, results = docs.len(), "ADS-B lookup complete");
+        Ok(docs)
     }
 }

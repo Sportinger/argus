@@ -13,6 +13,7 @@ pub fn create_router() -> Router<AppState> {
         // Agents
         .route("/api/agents", get(handlers::agents::list_agents))
         .route("/api/agents/trigger", post(handlers::agents::trigger_agent))
+        .route("/api/agents/runs", get(handlers::agents::list_runs))
         // Entities
         .route("/api/entities/search", post(handlers::entities::search_entities))
         .route("/api/entities/{id}", get(handlers::entities::get_entity))

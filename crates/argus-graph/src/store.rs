@@ -1,11 +1,15 @@
 use async_trait::async_trait;
 use neo4rs::{query, Graph, Node};
+use std::future::Future;
 use uuid::Uuid;
 
 use argus_core::config::AppConfig;
 use argus_core::entity::{Entity, EntityType, ExtractionResult, RelationType, Relationship};
 use argus_core::error::{ArgusError, Result};
 use argus_core::graph::{GraphNeighbors, GraphQuery, GraphStore};
+
+/// Timeout for all Neo4j operations (seconds).
+const NEO4J_TIMEOUT_SECS: u64 = 5;
 
 pub struct Neo4jGraphStore {
     graph: Option<Graph>,
@@ -32,6 +36,17 @@ impl Neo4jGraphStore {
     pub fn is_connected(&self) -> bool {
         self.graph.is_some()
     }
+
+}
+
+/// Wrap any async operation with a timeout, converting timeout to ArgusError::Graph.
+async fn timed<T, F: Future<Output = T>>(op: F) -> std::result::Result<T, ArgusError> {
+    tokio::time::timeout(std::time::Duration::from_secs(NEO4J_TIMEOUT_SECS), op)
+        .await
+        .map_err(|_| {
+            tracing::warn!("Neo4j operation timed out after {}s", NEO4J_TIMEOUT_SECS);
+            ArgusError::Graph(format!("Neo4j operation timed out after {}s", NEO4J_TIMEOUT_SECS))
+        })
 }
 
 fn entity_type_to_label(et: &EntityType) -> &'static str {
@@ -158,10 +173,8 @@ fn node_to_entity(node: &Node) -> Result<Entity> {
 #[async_trait]
 impl GraphStore for Neo4jGraphStore {
     async fn store_extraction(&self, result: &ExtractionResult) -> Result<()> {
-        let mut txn = self
-            .graph()?
-            .start_txn()
-            .await
+        let mut txn = timed(self.graph()?.start_txn())
+            .await?
             .map_err(|e| ArgusError::Graph(format!("Failed to start transaction: {}", e)))?;
 
         for entity in &result.entities {
@@ -171,29 +184,74 @@ impl GraphStore for Neo4jGraphStore {
             let properties_json = serde_json::to_string(&entity.properties)
                 .map_err(|e| ArgusError::Graph(format!("Failed to serialize properties: {}", e)))?;
 
-            // MERGE on (source, source_id) when source_id is present, otherwise on (id)
+            // Cross-source entity resolution: first check if an entity with the
+            // same name (case-insensitive) and type already exists from any source.
+            // If found, merge onto that node and accumulate sources.
+            // Otherwise, MERGE on (source, source_id) or (id) as before.
             let cypher = if entity.source_id.is_some() {
                 format!(
-                    "MERGE (n:{} {{source: $source, source_id: $source_id}}) \
-                     ON CREATE SET n.id = $id, n.name = $name, n.aliases = $aliases, \
-                       n.properties = $properties, n.confidence = $confidence, \
-                       n.first_seen = $first_seen, n.last_seen = $last_seen \
-                     ON MATCH SET n.name = $name, n.aliases = $aliases, \
-                       n.properties = $properties, n.confidence = $confidence, \
-                       n.last_seen = $last_seen",
-                    label
+                    "OPTIONAL MATCH (existing:{label} \
+                       WHERE toLower(existing.name) = toLower($name) \
+                       AND existing.source <> $source) \
+                     WITH existing \
+                     FOREACH (_ IN CASE WHEN existing IS NOT NULL THEN [1] ELSE [] END | \
+                       SET existing.sources = CASE \
+                         WHEN existing.sources IS NULL THEN [$source] \
+                         WHEN NOT $source IN existing.sources THEN existing.sources + $source \
+                         ELSE existing.sources END, \
+                       existing.aliases = $aliases, \
+                       existing.properties = $properties, \
+                       existing.confidence = CASE WHEN $confidence > existing.confidence THEN $confidence ELSE existing.confidence END, \
+                       existing.last_seen = $last_seen \
+                     ) \
+                     WITH existing \
+                     FOREACH (_ IN CASE WHEN existing IS NULL THEN [1] ELSE [] END | \
+                       MERGE (n:{label} {{source: $source, source_id: $source_id}}) \
+                       ON CREATE SET n.id = $id, n.name = $name, n.aliases = $aliases, \
+                         n.properties = $properties, n.confidence = $confidence, \
+                         n.first_seen = $first_seen, n.last_seen = $last_seen, \
+                         n.sources = [$source] \
+                       ON MATCH SET n.name = $name, n.aliases = $aliases, \
+                         n.properties = $properties, n.confidence = $confidence, \
+                         n.last_seen = $last_seen, \
+                         n.sources = CASE \
+                           WHEN n.sources IS NULL THEN [$source] \
+                           WHEN NOT $source IN n.sources THEN n.sources + $source \
+                           ELSE n.sources END \
+                     )",
                 )
             } else {
                 format!(
-                    "MERGE (n:{} {{id: $id}}) \
-                     ON CREATE SET n.name = $name, n.source = $source, n.source_id = $source_id, \
-                       n.aliases = $aliases, n.properties = $properties, \
-                       n.confidence = $confidence, n.first_seen = $first_seen, \
-                       n.last_seen = $last_seen \
-                     ON MATCH SET n.name = $name, n.aliases = $aliases, \
-                       n.properties = $properties, n.confidence = $confidence, \
-                       n.last_seen = $last_seen",
-                    label
+                    "OPTIONAL MATCH (existing:{label} \
+                       WHERE toLower(existing.name) = toLower($name) \
+                       AND existing.source <> $source) \
+                     WITH existing \
+                     FOREACH (_ IN CASE WHEN existing IS NOT NULL THEN [1] ELSE [] END | \
+                       SET existing.sources = CASE \
+                         WHEN existing.sources IS NULL THEN [$source] \
+                         WHEN NOT $source IN existing.sources THEN existing.sources + $source \
+                         ELSE existing.sources END, \
+                       existing.aliases = $aliases, \
+                       existing.properties = $properties, \
+                       existing.confidence = CASE WHEN $confidence > existing.confidence THEN $confidence ELSE existing.confidence END, \
+                       existing.last_seen = $last_seen \
+                     ) \
+                     WITH existing \
+                     FOREACH (_ IN CASE WHEN existing IS NULL THEN [1] ELSE [] END | \
+                       MERGE (n:{label} {{id: $id}}) \
+                       ON CREATE SET n.name = $name, n.source = $source, n.source_id = $source_id, \
+                         n.aliases = $aliases, n.properties = $properties, \
+                         n.confidence = $confidence, n.first_seen = $first_seen, \
+                         n.last_seen = $last_seen, \
+                         n.sources = [$source] \
+                       ON MATCH SET n.name = $name, n.aliases = $aliases, \
+                         n.properties = $properties, n.confidence = $confidence, \
+                         n.last_seen = $last_seen, \
+                         n.sources = CASE \
+                           WHEN n.sources IS NULL THEN [$source] \
+                           WHEN NOT $source IN n.sources THEN n.sources + $source \
+                           ELSE n.sources END \
+                     )",
                 )
             };
 
@@ -233,11 +291,16 @@ impl GraphStore for Neo4jGraphStore {
                 .map(|t| t.to_rfc3339())
                 .unwrap_or_default();
 
+            // Use MERGE instead of CREATE to prevent duplicate relationships
             let cypher = format!(
                 "MATCH (a {{id: $source_id}}) \
                  MATCH (b {{id: $target_id}}) \
-                 CREATE (a)-[r:{} {{id: $rel_id, properties: $properties, \
-                   confidence: $confidence, source: $source, timestamp: $timestamp}}]->(b)",
+                 MERGE (a)-[r:{} {{source: $source}}]->(b) \
+                 ON CREATE SET r.id = $rel_id, r.properties = $properties, \
+                   r.confidence = $confidence, r.timestamp = $timestamp \
+                 ON MATCH SET r.properties = $properties, \
+                   r.confidence = CASE WHEN $confidence > r.confidence THEN $confidence ELSE r.confidence END, \
+                   r.timestamp = CASE WHEN $timestamp <> '' THEN $timestamp ELSE r.timestamp END",
                 rel_label
             );
 
@@ -277,11 +340,12 @@ impl GraphStore for Neo4jGraphStore {
     }
 
     async fn get_entity(&self, id: Uuid) -> Result<Option<Entity>> {
-        let mut stream = self
-            .graph()?
-            .execute(query("MATCH (n {id: $id}) RETURN n").param("id", id.to_string()))
-            .await
-            .map_err(|e| ArgusError::Graph(format!("Failed to query entity: {}", e)))?;
+        let mut stream = timed(
+            self.graph()?
+                .execute(query("MATCH (n {id: $id}) RETURN n").param("id", id.to_string())),
+        )
+        .await?
+        .map_err(|e| ArgusError::Graph(format!("Failed to query entity: {}", e)))?;
 
         match stream.next().await {
             Ok(Some(row)) => {
@@ -302,10 +366,8 @@ impl GraphStore for Neo4jGraphStore {
             .param("query", query_str.to_string())
             .param("limit", limit as i64);
 
-        let mut stream = self
-            .graph()?
-            .execute(q)
-            .await
+        let mut stream = timed(self.graph()?.execute(q))
+            .await?
             .map_err(|e| ArgusError::Graph(format!("Failed to search entities: {}", e)))?;
 
         let mut entities = Vec::new();
@@ -349,10 +411,8 @@ impl GraphStore for Neo4jGraphStore {
 
         let q = query(&cypher).param("id", entity_id.to_string());
 
-        let mut stream = self
-            .graph()?
-            .execute(q)
-            .await
+        let mut stream = timed(self.graph()?.execute(q))
+            .await?
             .map_err(|e| ArgusError::Graph(format!("Failed to get neighbors: {}", e)))?;
 
         let mut neighbors = Vec::new();
@@ -494,10 +554,8 @@ impl GraphStore for Neo4jGraphStore {
             }
         }
 
-        let mut stream = self
-            .graph()?
-            .execute(q)
-            .await
+        let mut stream = timed(self.graph()?.execute(q))
+            .await?
             .map_err(|e| ArgusError::Graph(format!("Failed to execute cypher: {}", e)))?;
 
         let mut rows = Vec::new();
@@ -520,11 +578,12 @@ impl GraphStore for Neo4jGraphStore {
     }
 
     async fn entity_count(&self) -> Result<u64> {
-        let mut stream = self
-            .graph()?
-            .execute(query("MATCH (n) RETURN count(n) AS cnt"))
-            .await
-            .map_err(|e| ArgusError::Graph(format!("Failed to count entities: {}", e)))?;
+        let mut stream = timed(
+            self.graph()?
+                .execute(query("MATCH (n) RETURN count(n) AS cnt")),
+        )
+        .await?
+        .map_err(|e| ArgusError::Graph(format!("Failed to count entities: {}", e)))?;
 
         match stream.next().await {
             Ok(Some(row)) => {
@@ -539,11 +598,12 @@ impl GraphStore for Neo4jGraphStore {
     }
 
     async fn relationship_count(&self) -> Result<u64> {
-        let mut stream = self
-            .graph()?
-            .execute(query("MATCH ()-[r]->() RETURN count(r) AS cnt"))
-            .await
-            .map_err(|e| ArgusError::Graph(format!("Failed to count relationships: {}", e)))?;
+        let mut stream = timed(
+            self.graph()?
+                .execute(query("MATCH ()-[r]->() RETURN count(r) AS cnt")),
+        )
+        .await?
+        .map_err(|e| ArgusError::Graph(format!("Failed to count relationships: {}", e)))?;
 
         match stream.next().await {
             Ok(Some(row)) => {

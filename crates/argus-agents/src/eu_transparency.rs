@@ -4,7 +4,8 @@ use serde::Deserialize;
 use tokio::sync::RwLock;
 use tracing::{debug, info, warn};
 
-use argus_core::agent::{Agent, AgentStatus, RawDocument};
+use argus_core::agent::{Agent, AgentLookup, AgentStatus, RawDocument};
+use argus_core::entity::EntityType;
 use argus_core::error::{ArgusError, Result};
 
 const EU_TRANSPARENCY_API_URL: &str =
@@ -306,5 +307,22 @@ impl Agent for EuTransparencyAgent {
             documents_collected: state.documents_collected,
             error: state.last_error.clone(),
         }
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+}
+
+#[async_trait]
+impl AgentLookup for EuTransparencyAgent {
+    fn can_lookup(&self, entity_type: &EntityType) -> bool {
+        matches!(entity_type, EntityType::Person | EntityType::Organization)
+    }
+
+    async fn lookup(&self, _name: &str, _entity_type: &EntityType) -> Result<Vec<RawDocument>> {
+        // EU Transparency Register doesn't have a search-by-name API endpoint
+        // The public API returns bulk data only; individual lookups require scraping
+        Ok(Vec::new())
     }
 }

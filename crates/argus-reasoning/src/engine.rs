@@ -50,7 +50,7 @@ struct ContentBlock {
 // ---------------------------------------------------------------------------
 
 const ANTHROPIC_API_URL: &str = "https://api.anthropic.com/v1/messages";
-const MODEL: &str = "claude-sonnet-4-5-20241022";
+const MODEL: &str = "claude-sonnet-4-5-20250929";
 const MAX_REASONING_ITERATIONS: usize = 5;
 
 // ---------------------------------------------------------------------------

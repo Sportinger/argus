@@ -32,9 +32,35 @@ pub struct AgentTriggerRequest {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AgentTriggerResponse {
+    pub run_id: String,
     pub agent_name: String,
-    pub documents_collected: u64,
+    pub status: String,
     pub message: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AgentRunStatus {
+    pub run_id: String,
+    pub agent_name: String,
+    pub status: AgentRunState,
+    pub started_at: DateTime<Utc>,
+    pub finished_at: Option<DateTime<Utc>>,
+    pub documents_collected: u64,
+    pub entities_extracted: u64,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum AgentRunState {
+    Running,
+    Completed,
+    Failed,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AgentRunsResponse {
+    pub runs: Vec<AgentRunStatus>,
 }
 
 // --- Entities ---

@@ -7,7 +7,8 @@ use serde_json::json;
 use tokio::sync::RwLock;
 use tracing::{debug, error, info, warn};
 
-use argus_core::agent::{Agent, AgentStatus, RawDocument};
+use argus_core::agent::{Agent, AgentLookup, AgentStatus, RawDocument};
+use argus_core::entity::EntityType;
 use argus_core::error::{ArgusError, Result};
 
 /// URL that returns pointers to the latest GDELT 2.0 export files.
@@ -323,6 +324,22 @@ impl Agent for GdeltAgent {
             documents_collected: self.state.documents_collected.load(Ordering::Relaxed),
             error: self.state.last_error.read().await.clone(),
         }
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+}
+
+#[async_trait]
+impl AgentLookup for GdeltAgent {
+    fn can_lookup(&self, _entity_type: &EntityType) -> bool {
+        // GDELT is a news event source — it doesn't support entity lookup
+        false
+    }
+
+    async fn lookup(&self, _name: &str, _entity_type: &EntityType) -> Result<Vec<RawDocument>> {
+        Ok(Vec::new())
     }
 }
 

@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 use std::sync::Arc;
+use tokio::sync::RwLock;
 
+use argus_core::api_types::AgentRunStatus;
 use argus_core::{Agent, AppConfig};
 use argus_extraction::LlmExtractionPipeline;
 use argus_graph::Neo4jGraphStore;
@@ -13,4 +15,5 @@ pub struct AppState {
     pub graph: Arc<Neo4jGraphStore>,
     pub extraction: Arc<LlmExtractionPipeline>,
     pub reasoning: Arc<LlmReasoningEngine>,
+    pub runs: Arc<RwLock<Vec<AgentRunStatus>>>,
 }

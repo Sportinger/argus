@@ -5,7 +5,8 @@ use serde::Deserialize;
 use tokio::sync::RwLock;
 use tracing::{debug, error, info, instrument, warn};
 
-use argus_core::agent::{Agent, AgentStatus, RawDocument};
+use argus_core::agent::{Agent, AgentLookup, AgentStatus, RawDocument};
+use argus_core::entity::EntityType;
 use argus_core::error::{ArgusError, Result};
 
 const OPENCORPORATES_API_BASE: &str = "https://api.opencorporates.com/v0.4";
@@ -269,6 +270,56 @@ impl Agent for OpenCorporatesAgent {
             documents_collected: state.documents_collected,
             error: state.last_error.clone(),
         }
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+}
+
+#[async_trait]
+impl AgentLookup for OpenCorporatesAgent {
+    fn can_lookup(&self, entity_type: &EntityType) -> bool {
+        matches!(entity_type, EntityType::Organization)
+    }
+
+    async fn lookup(&self, name: &str, _entity_type: &EntityType) -> Result<Vec<RawDocument>> {
+        let url = self.build_search_url();
+        let collected_at = Utc::now();
+
+        debug!(name = %name, "OpenCorporates lookup");
+
+        let response = self
+            .client
+            .get(&url)
+            .query(&[("q", name), ("per_page", "5")])
+            .send()
+            .await
+            .map_err(|e| ArgusError::Agent {
+                agent: "opencorporates".to_string(),
+                message: format!("Lookup HTTP request failed: {}", e),
+            })?;
+
+        if !response.status().is_success() {
+            return Ok(Vec::new());
+        }
+
+        let api_response: ApiResponse = response.json().await.map_err(|e| {
+            ArgusError::Agent {
+                agent: "opencorporates".to_string(),
+                message: format!("Lookup parse failed: {}", e),
+            }
+        })?;
+
+        let docs: Vec<RawDocument> = api_response
+            .results
+            .companies
+            .iter()
+            .map(|wrapper| self.company_to_raw_document(&wrapper.company, collected_at))
+            .collect();
+
+        info!(name = %name, results = docs.len(), "OpenCorporates lookup complete");
+        Ok(docs)
     }
 }
 

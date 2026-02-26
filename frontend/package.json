@@ -9,17 +9,17 @@
     "lint": "eslint"
   },
   "dependencies": {
-    "@deck.gl/core": "^9.2.9",
-    "@deck.gl/layers": "^9.2.9",
-    "@deck.gl/react": "^9.2.9",
+    "@deck.gl/core": "^8.9.36",
+    "@deck.gl/layers": "^8.9.36",
+    "@deck.gl/react": "^8.9.36",
     "@types/d3": "^7.4.3",
     "d3": "^7.9.0",
-    "deck.gl": "^9.2.9",
-    "maplibre-gl": "^5.19.0",
+    "deck.gl": "^8.9.36",
+    "maplibre-gl": "^3.6.2",
     "next": "16.1.6",
     "react": "19.2.3",
     "react-dom": "19.2.3",
-    "react-map-gl": "^8.1.0"
+    "react-map-gl": "^7.1.9"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

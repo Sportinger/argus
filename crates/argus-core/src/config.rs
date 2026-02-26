@@ -28,7 +28,7 @@ impl AppConfig {
         Self {
             neo4j_uri: std::env::var("NEO4J_URI").unwrap_or_else(|_| "bolt://localhost:7687".into()),
             neo4j_user: std::env::var("NEO4J_USER").unwrap_or_else(|_| "neo4j".into()),
-            neo4j_password: std::env::var("NEO4J_PASSWORD").unwrap_or_else(|_| "argus".into()),
+            neo4j_password: std::env::var("NEO4J_PASSWORD").unwrap_or_else(|_| "argus2026".into()),
             qdrant_url: std::env::var("QDRANT_URL")
                 .unwrap_or_else(|_| "http://localhost:6333".into()),
             anthropic_api_key: std::env::var("ANTHROPIC_API_KEY").unwrap_or_default(),

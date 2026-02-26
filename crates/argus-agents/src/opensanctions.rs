@@ -5,7 +5,8 @@ use serde::Deserialize;
 use tokio::sync::RwLock;
 use tracing::{debug, error, info, warn};
 
-use argus_core::agent::{Agent, AgentStatus, RawDocument};
+use argus_core::agent::{Agent, AgentLookup, AgentStatus, RawDocument};
+use argus_core::entity::EntityType;
 use argus_core::error::{ArgusError, Result};
 
 const OPENSANCTIONS_API_URL: &str = "https://api.opensanctions.org/entities";
@@ -273,6 +274,55 @@ impl Agent for OpenSanctionsAgent {
             documents_collected: state.documents_collected,
             error: state.last_error.clone(),
         }
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+}
+
+#[async_trait]
+impl AgentLookup for OpenSanctionsAgent {
+    fn can_lookup(&self, entity_type: &EntityType) -> bool {
+        matches!(entity_type, EntityType::Person | EntityType::Organization | EntityType::Vessel)
+    }
+
+    async fn lookup(&self, name: &str, _entity_type: &EntityType) -> Result<Vec<RawDocument>> {
+        let url = format!(
+            "{}?q={}&dataset={}&limit=5",
+            OPENSANCTIONS_API_URL,
+            urlencoding::encode(name),
+            DEFAULT_DATASET
+        );
+
+        debug!(url = %url, name = %name, "OpenSanctions lookup");
+
+        let response = self.client.get(&url).send().await.map_err(|e| {
+            ArgusError::Agent {
+                agent: "opensanctions".to_string(),
+                message: format!("Lookup HTTP request failed: {}", e),
+            }
+        })?;
+
+        if !response.status().is_success() {
+            return Ok(Vec::new());
+        }
+
+        let data: OpenSanctionsResponse = response.json().await.map_err(|e| {
+            ArgusError::Agent {
+                agent: "opensanctions".to_string(),
+                message: format!("Lookup parse failed: {}", e),
+            }
+        })?;
+
+        let docs: Vec<RawDocument> = data
+            .results
+            .iter()
+            .map(|entity| self.entity_to_document(entity))
+            .collect();
+
+        info!(name = %name, results = docs.len(), "OpenSanctions lookup complete");
+        Ok(docs)
     }
 }
 
