@@ -1,0 +1,49 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+.eggs/
+venv/
+.venv/
+env/
+
+# Environment & secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Data
+data/*
+!data/.gitkeep
+
+# Neo4j
+neo4j/data/
+neo4j/logs/
+
+# Node / Frontend
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Docker
+docker-compose.override.yml
+
+# Logs
+*.log
+logs/

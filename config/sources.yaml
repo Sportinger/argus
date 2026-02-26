@@ -1,0 +1,42 @@
+sources:
+  gdelt:
+    name: GDELT Project
+    url: https://api.gdeltproject.org/api/v2/doc/doc
+    type: news_events
+    schedule: "*/5 * * * *"  # every 5 minutes
+    enabled: true
+
+  opencorporates:
+    name: OpenCorporates
+    url: https://api.opencorporates.com/v0.4
+    type: corporate_registry
+    schedule: "0 */6 * * *"  # every 6 hours
+    enabled: false
+
+  ais_exchange:
+    name: AIS Marine Traffic
+    url: https://www.aishub.net/api
+    type: ship_tracking
+    schedule: "*/15 * * * *"  # every 15 minutes
+    enabled: false
+
+  adsb_exchange:
+    name: ADS-B Exchange
+    url: https://opensky-network.org/api
+    type: flight_tracking
+    schedule: "*/10 * * * *"  # every 10 minutes
+    enabled: false
+
+  opensanctions:
+    name: OpenSanctions
+    url: https://api.opensanctions.org
+    type: sanctions_pep
+    schedule: "0 0 * * *"  # daily
+    enabled: false
+
+  eu_transparency:
+    name: EU Transparency Register
+    url: https://ec.europa.eu/transparencyregister/public
+    type: lobby_register
+    schedule: "0 0 * * 0"  # weekly
+    enabled: false
