@@ -1,0 +1,16 @@
+[package]
+name = "argus-extraction"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+argus-core = { path = "../argus-core" }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+async-trait = { workspace = true }
+reqwest = { workspace = true }
+tracing = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }

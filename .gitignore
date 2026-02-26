@@ -41,6 +41,10 @@ frontend/out/
 Thumbs.db
 desktop.ini
 
+# Rust
+/target
+**/*.rs.bk
+
 # Docker
 docker-compose.override.yml
 

@@ -1,0 +1,32 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/argus-core",
+    "crates/argus-agents",
+    "crates/argus-graph",
+    "crates/argus-extraction",
+    "crates/argus-reasoning",
+    "crates/argus-server",
+    "crates/argus-tests",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "AGPL-3.0"
+
+[workspace.dependencies]
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+async-trait = "0.1"
+thiserror = "2"
+tracing = "0.1"
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1", features = ["v4", "serde"] }
+url = { version = "2", features = ["serde"] }
+reqwest = { version = "0.12", features = ["json"] }
+axum = "0.8"
+tower-http = { version = "0.6", features = ["cors", "trace"] }
+neo4rs = "0.8"
+qdrant-client = "1"
