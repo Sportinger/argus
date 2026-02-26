@@ -22,6 +22,9 @@ Open Source Global Intelligence Platform — aggregates public data, extracts en
 - `pip install -e ".[dev]"` — Install with dev deps
 - `pytest` — Run tests
 
+## Workflow
+- Always commit and push after completing a task or meaningful change
+
 ## Conventions
 - Pydantic models for all data structures
 - httpx for HTTP (async)
