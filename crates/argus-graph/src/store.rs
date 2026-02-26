@@ -8,19 +8,29 @@ use argus_core::error::{ArgusError, Result};
 use argus_core::graph::{GraphNeighbors, GraphQuery, GraphStore};
 
 pub struct Neo4jGraphStore {
-    graph: Graph,
+    graph: Option<Graph>,
 }
 
 impl Neo4jGraphStore {
-    pub async fn new(config: &AppConfig) -> Result<Self> {
-        let graph = Graph::new(&config.neo4j_uri, &config.neo4j_user, &config.neo4j_password)
-            .await
-            .map_err(|e| ArgusError::Graph(format!("Failed to connect to Neo4j: {}", e)))?;
-        tracing::info!(
-            uri = %config.neo4j_uri,
-            "Connected to Neo4j"
-        );
-        Ok(Self { graph })
+    pub async fn new(config: &AppConfig) -> Self {
+        match Graph::new(&config.neo4j_uri, &config.neo4j_user, &config.neo4j_password).await {
+            Ok(graph) => {
+                tracing::info!(uri = %config.neo4j_uri, "Connected to Neo4j");
+                Self { graph: Some(graph) }
+            }
+            Err(e) => {
+                tracing::warn!(uri = %config.neo4j_uri, error = %e, "Failed to connect to Neo4j — running in degraded mode");
+                Self { graph: None }
+            }
+        }
+    }
+
+    fn graph(&self) -> Result<&Graph> {
+        self.graph.as_ref().ok_or_else(|| ArgusError::Graph("Neo4j not connected".into()))
+    }
+
+    pub fn is_connected(&self) -> bool {
+        self.graph.is_some()
     }
 }
 
@@ -149,7 +159,7 @@ fn node_to_entity(node: &Node) -> Result<Entity> {
 impl GraphStore for Neo4jGraphStore {
     async fn store_extraction(&self, result: &ExtractionResult) -> Result<()> {
         let mut txn = self
-            .graph
+            .graph()?
             .start_txn()
             .await
             .map_err(|e| ArgusError::Graph(format!("Failed to start transaction: {}", e)))?;
@@ -268,7 +278,7 @@ impl GraphStore for Neo4jGraphStore {
 
     async fn get_entity(&self, id: Uuid) -> Result<Option<Entity>> {
         let mut stream = self
-            .graph
+            .graph()?
             .execute(query("MATCH (n {id: $id}) RETURN n").param("id", id.to_string()))
             .await
             .map_err(|e| ArgusError::Graph(format!("Failed to query entity: {}", e)))?;
@@ -293,7 +303,7 @@ impl GraphStore for Neo4jGraphStore {
             .param("limit", limit as i64);
 
         let mut stream = self
-            .graph
+            .graph()?
             .execute(q)
             .await
             .map_err(|e| ArgusError::Graph(format!("Failed to search entities: {}", e)))?;
@@ -340,7 +350,7 @@ impl GraphStore for Neo4jGraphStore {
         let q = query(&cypher).param("id", entity_id.to_string());
 
         let mut stream = self
-            .graph
+            .graph()?
             .execute(q)
             .await
             .map_err(|e| ArgusError::Graph(format!("Failed to get neighbors: {}", e)))?;
@@ -485,7 +495,7 @@ impl GraphStore for Neo4jGraphStore {
         }
 
         let mut stream = self
-            .graph
+            .graph()?
             .execute(q)
             .await
             .map_err(|e| ArgusError::Graph(format!("Failed to execute cypher: {}", e)))?;
@@ -511,7 +521,7 @@ impl GraphStore for Neo4jGraphStore {
 
     async fn entity_count(&self) -> Result<u64> {
         let mut stream = self
-            .graph
+            .graph()?
             .execute(query("MATCH (n) RETURN count(n) AS cnt"))
             .await
             .map_err(|e| ArgusError::Graph(format!("Failed to count entities: {}", e)))?;
@@ -530,7 +540,7 @@ impl GraphStore for Neo4jGraphStore {
 
     async fn relationship_count(&self) -> Result<u64> {
         let mut stream = self
-            .graph
+            .graph()?
             .execute(query("MATCH ()-[r]->() RETURN count(r) AS cnt"))
             .await
             .map_err(|e| ArgusError::Graph(format!("Failed to count relationships: {}", e)))?;

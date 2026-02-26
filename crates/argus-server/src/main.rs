@@ -20,11 +20,7 @@ async fn main() {
     let host = config.server_host.clone();
     let port = config.server_port;
 
-    let graph = Arc::new(
-        argus_graph::Neo4jGraphStore::new(&config)
-            .await
-            .expect("Failed to connect to Neo4j"),
-    );
+    let graph = Arc::new(argus_graph::Neo4jGraphStore::new(&config).await);
     let extraction = Arc::new(argus_extraction::LlmExtractionPipeline::new(&config));
     let reasoning = Arc::new(argus_reasoning::LlmReasoningEngine::new(
         graph.clone() as Arc<dyn argus_core::graph::GraphStore>,

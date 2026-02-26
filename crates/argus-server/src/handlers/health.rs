@@ -1,5 +1,5 @@
 use axum::{extract::State, http::StatusCode, response::IntoResponse, Json};
-use tracing::{info, warn};
+use tracing::info;
 
 use argus_core::api_types::HealthResponse;
 use argus_core::GraphStore;
@@ -13,29 +13,25 @@ pub async fn health_check(
 ) -> impl IntoResponse {
     info!("Health check requested");
 
-    let (neo4j_connected, entity_count, relationship_count) =
-        match state.graph.entity_count().await {
-            Ok(entities) => match state.graph.relationship_count().await {
-                Ok(rels) => (true, entities, rels),
-                Err(e) => {
-                    warn!("Neo4j relationship_count failed: {e}");
-                    (true, entities, 0)
-                }
-            },
-            Err(e) => {
-                warn!("Neo4j connectivity check failed: {e}");
-                (false, 0, 0)
-            }
-        };
+    let (neo4j_connected, entity_count, relationship_count) = {
+        let result = tokio::time::timeout(
+            std::time::Duration::from_secs(3),
+            state.graph.entity_count(),
+        )
+        .await;
 
-    // Qdrant connectivity: attempt a basic health check via the graph layer.
-    // Since there is no dedicated Qdrant handle in AppState we treat it as
-    // connected when Neo4j is reachable (the vector index lives alongside the
-    // graph in the current architecture).  A more granular probe can be added
-    // later when a dedicated Qdrant client is surfaced.
+        match result {
+            Ok(Ok(ec)) => {
+                let rc = state.graph.relationship_count().await.unwrap_or(0);
+                (true, ec, rc)
+            }
+            _ => (false, 0, 0),
+        }
+    };
+
     let qdrant_connected = neo4j_connected;
 
-    let status = if neo4j_connected && qdrant_connected {
+    let status = if neo4j_connected {
         "ok".to_string()
     } else {
         "degraded".to_string()
