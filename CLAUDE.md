@@ -21,7 +21,8 @@ Open Source Global Intelligence Platform — aggregates public data, extracts en
 ## API Endpoints
 - `GET  /api/health` — System health + Neo4j/Qdrant connectivity
 - `GET  /api/agents` — List all ingestion agents
-- `POST /api/agents/trigger` — Trigger agent collection
+- `POST /api/agents/trigger` — Trigger agent collection (async, returns 202 + run_id)
+- `GET  /api/agents/runs` — List agent runs (active/completed with status tracking)
 - `POST /api/entities/search` — Search entities
 - `GET  /api/entities/{id}` — Entity detail + neighbors
 - `POST /api/graph/query` — Raw Cypher query
